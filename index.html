@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My AI Chat</title>
+  <style>
+    body { font-family: system-ui, Arial; max-width: 900px; margin: 24px auto; padding: 0 12px; }
+    #chat { border: 1px solid #ddd; padding: 12px; height: 55vh; overflow: auto; border-radius: 8px; }
+    .msg { margin: 10px 0; }
+    .role { font-weight: 600; }
+    textarea, input { width: 100%; box-sizing: border-box; }
+    textarea { min-height: 70px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    button { padding: 10px 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>My AI Chat</h1>
+
+  <label>System prompt (твой промпт):</label>
+  <textarea id="systemPrompt" placeholder="Например: Ты мой помощник по Roblox Lua..."></textarea>
+
+  <label>Model:</label>
+  <input id="model" value="openai/gpt-4o-mini" />
+
+  <div id="chat"></div>
+
+  <div class="row">
+    <textarea id="userInput" placeholder="Напиши сообщение..."></textarea>
+    <button id="sendBtn">Отправить</button>
+  </div>
+
+  <script>
+    const chatEl = document.getElementById('chat');
+    const sendBtn = document.getElementById('sendBtn');
+    const userInput = document.getElementById('userInput');
+    const systemPromptEl = document.getElementById('systemPrompt');
+    const modelEl = document.getElementById('model');
+
+    const state = {
+      messages: []
+    };
+
+    function render() {
+      chatEl.innerHTML = state.messages.map(m => `
+        <div class="msg">
+          <div class="role">${m.role}</div>
+          <div class="content">${escapeHtml(m.content)}</div>
+        </div>
+      `).join('');
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+
+    async function send() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      state.messages.push({ role: 'user', content: text });
+      userInput.value = '';
+      render();
+
+      // ВАЖНО: это твой прокси-эндпоинт (см. ниже Cloudflare Worker / Vercel).
+      const PROXY_URL = "https://YOUR_PROXY_DOMAIN/chat";
+
+      const payload = {
+        model: modelEl.value.trim(),
+        systemPrompt: systemPromptEl.value,
+        messages: state.messages
+      };
+
+      state.messages.push({ role: 'assistant', content: '...' });
+      render();
+
+      try {
+        const res = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        // ожидаем: { text: "ответ" }
+        state.messages[state.messages.length - 1] = { role: 'assistant', content: data.text ?? '(no text)' };
+        render();
+      } catch (e) {
+        state.messages[state.messages.length - 1] = { role: 'assistant', content: 'Ошибка: ' + e.message };
+        render();
+      }
+    }
+
+    sendBtn.onclick = send;
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+
+    render();
+  </script>
+</body>
+</html>
